@@ -11,7 +11,7 @@ lock = threading.Lock()
 def lookup_case(case_number):
     with lock:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False)  # set True in prod!
+            browser = p.chromium.launch(headless=True)  # set True in prodS!
             page = browser.new_page()
 
             # 1. Open website
@@ -82,3 +82,4 @@ if __name__ == "__main__":
     case_number = sys.argv[1]
     output = lookup_case(case_number)
     print(json.dumps(output))
+
