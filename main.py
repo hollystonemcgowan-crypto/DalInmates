@@ -1,85 +1,78 @@
 from fastapi import FastAPI
 import time
 import threading
-import json
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 app = FastAPI()
-
 lock = threading.Lock()
 
 def lookup_case(case_number):
-    with lock:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)  # set True in prodS!
-            page = browser.new_page()
+    try:
+        with lock:
+            with sync_playwright() as p:
+                print("[INFO] Launching browser...")
+                browser = p.chromium.launch(headless=False)  # Requires X server / GUI
+                page = browser.new_page()
 
-            # 1. Open website
-            page.goto(
-                "https://www.dallascounty.org/jaillookup/search.jsp",
-                wait_until="domcontentloaded",
-                timeout=80000
-            )
+                print("[INFO] Opening Dallas County Jail Lookup page...")
+                page.goto(
+                    "https://www.dallascounty.org/jaillookup/search.jsp",
+                    wait_until="domcontentloaded",
+                    timeout=80000
+                )
 
-            page.wait_for_timeout(5000)
+                time.sleep(2)
+                page.mouse.wheel(0, 1500)
+                time.sleep(2)
 
-            # 2. Scroll down (form is lower on page)
-            page.mouse.wheel(0, 1500)
-            time.sleep(2)
+                print(f"[INFO] Filling case number: {case_number}")
+                page.wait_for_selector('input[name="caseNumber"]', timeout=60000)
+                page.fill('input[name="caseNumber"]', case_number)
 
-            # 3. Find case number input
-            page.wait_for_selector('input[name="caseNumber"]', timeout=60000)
-            page.fill('input[name="caseNumber"]', case_number)
+                print("[INFO] Clicking Search button...")
+                page.click('input[value="Search By Case Number"]')
 
-            # 4. Click search button
-            page.click('input[value="Search By Case Number"]')
+                print("[INFO] Waiting for results...")
+                page.wait_for_load_state("networkidle")
+                time.sleep(3)
 
-            # 5. Wait for next page / result
-            page.wait_for_load_state("networkidle")
-            time.sleep(3)
+                body_text = page.inner_text("body")
 
-            text = page.inner_text("body")
+                if "No records were found" in body_text:
+                    print("[INFO] No records found for this case number.")
+                    browser.close()
+                    return {"found": False}
 
-            # 6. Check "No records" message
-            if "No records were found" in text:
+                # Click the first defendant link that starts with "defendant_detail"
+                print("[INFO] Clicking defendant link...")
+                try:
+                    page.wait_for_selector('a[href^="defendant_detail"]', timeout=30000)
+                    page.click('a[href^="defendant_detail"]')
+                except PlaywrightTimeoutError:
+                    print("[ERROR] Defendant link not found.")
+                    browser.close()
+                    return {"found": False, "error": "Defendant link not found"}
+
+                print("[INFO] Waiting for detail page to load...")
+                page.wait_for_load_state("networkidle")
+                time.sleep(3)
+
+                detail_text = page.inner_text("body")
+                print("[INFO] Scraping completed.")
+
                 browser.close()
-                return {
-                    "found": False,
-                    "case_number": case_number
-                }
+                return {"found": True, "detail_text": detail_text.strip()}
 
-            # 7. Scrape all visible text (basic safe scrape)
-            result = {
-                "found": True,
-                "case_number": case_number,
-                "raw_text": text.strip()
-            }
-
-            browser.close()
-            return result
-
+    except Exception as e:
+        print("[ERROR] Exception occurred:")
+        import traceback
+        traceback.print_exc()
+        return {"found": False, "error": str(e)}
 
 @app.get("/")
 def root():
     return {"status": "alive"}
 
-
 @app.get("/search/{case_number}")
 def search(case_number: str):
-    try:
-        return lookup_case(case_number)
-    except Exception as e:
-        return {"error": True, "message": str(e)}
-
-
-# If you want to run locally as script (optional)
-if __name__ == "__main__":
-    import sys
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "case_number_missing"}))
-        exit(1)
-
-    case_number = sys.argv[1]
-    output = lookup_case(case_number)
-    print(json.dumps(output))
-
+    return lookup_case(case_number)
