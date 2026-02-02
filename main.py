@@ -2,10 +2,10 @@ from fastapi import FastAPI
 import time
 import threading
 from playwright.sync_api import sync_playwright
+from bs4 import BeautifulSoup
 
 app = FastAPI()
 
-# 🔒 Global lock to prevent parallel Playwright runs
 lock = threading.Lock()
 
 
@@ -26,7 +26,6 @@ def search(case_number: str):
 
 
 def lookup_case(case_number: str):
-    # Only ONE Playwright execution at a time
     with lock:
         with sync_playwright() as p:
             browser = p.chromium.launch(
@@ -45,43 +44,57 @@ def lookup_case(case_number: str):
                 )
             )
 
-            # Open Dallas County jail lookup page
             page.goto(
                 "https://www.dallascounty.org/jaillookup/search.jsp",
                 timeout=60000
             )
 
-            # Let the page settle
             page.wait_for_timeout(3000)
-
-            # Scroll to ensure inputs are visible
             page.mouse.wheel(0, 1500)
             time.sleep(2)
 
-            # Fill and submit form
             page.fill('input[name="caseNumber"]', case_number)
             page.click('input[value="Search By Case Number"]')
 
-            # Wait for results
             page.wait_for_load_state("networkidle")
             time.sleep(2)
 
-            # ✅ SAFE extraction (no heavy rendering)
             html = page.content()
-
             browser.close()
 
-            # Simple result detection
-            if "No records were found" in html:
-                return {
-                    "found": False,
-                    "case_number": case_number
-                }
-
+        # --------------------
+        # PARSE HTML
+        # --------------------
+        if "No records were found" in html:
             return {
-                "found": True,
-                "case_number": case_number,
-                "source": "Dallas County Jail Lookup",
-                "html_length": len(html),
-                "raw_html": html[:3000]  # limit size for n8n
+                "found": False,
+                "case_number": case_number
             }
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        record = {}
+
+        # Extract all table rows
+        for row in soup.select("tr"):
+            cols = row.find_all("td")
+            if len(cols) == 2:
+                label = cols[0].get_text(strip=True)
+                value = cols[1].get_text(strip=True)
+
+                if label and value:
+                    record[label] = value
+
+        if not record:
+            return {
+                "found": False,
+                "case_number": case_number,
+                "message": "Record page loaded but no data parsed"
+            }
+
+        return {
+            "found": True,
+            "case_number": case_number,
+            "source": "Dallas County Jail Lookup",
+            "record": record
+        }
