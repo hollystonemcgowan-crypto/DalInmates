@@ -10,7 +10,13 @@ def root():
 
 @app.get("/search/{case_number}")
 def search(case_number: str):
-    return lookup_case(case_number)
+    try:
+        return lookup_case(case_number)
+    except Exception as e:
+        return {
+            "error": True,
+            "message": str(e)
+        }
 
 def lookup_case(case_number: str):
     with sync_playwright() as p:
@@ -49,3 +55,4 @@ def lookup_case(case_number: str):
             "found": True,
             "raw_text": text[:3000]
         }
+
