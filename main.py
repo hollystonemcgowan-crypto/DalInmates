@@ -11,7 +11,7 @@ def lookup_case(case_number):
         with lock:
             with sync_playwright() as p:
                 print("[INFO] Launching browser...")
-                browser = p.chromium.launch(headless=False)  # Requires X server / GUI
+                browser = p.chromium.launch(headless=True)  # Requires X server / GUI
                 page = browser.new_page()
 
                 print("[INFO] Opening Dallas County Jail Lookup page...")
@@ -76,3 +76,4 @@ def root():
 @app.get("/search/{case_number}")
 def search(case_number: str):
     return lookup_case(case_number)
+
