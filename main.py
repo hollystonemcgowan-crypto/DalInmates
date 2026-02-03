@@ -18,7 +18,7 @@ def lookup_case(case_number):
                 page.goto(
                     "https://www.dallascounty.org/jaillookup/search.jsp",
                     wait_until="domcontentloaded",
-                    timeout=80000
+                    timeout=90000
                 )
 
                 time.sleep(2)
@@ -26,7 +26,7 @@ def lookup_case(case_number):
                 time.sleep(2)
 
                 print(f"[INFO] Filling case number: {case_number}")
-                page.wait_for_selector('input[name="caseNumber"]', timeout=60000)
+                page.wait_for_selector('input[name="caseNumber"]', timeout=80000)
                 page.fill('input[name="caseNumber"]', case_number)
 
                 print("[INFO] Clicking Search button...")
@@ -46,7 +46,7 @@ def lookup_case(case_number):
                 # Click the first defendant link that starts with "defendant_detail"
                 print("[INFO] Clicking defendant link...")
                 try:
-                    page.wait_for_selector('a[href^="defendant_detail"]', timeout=30000)
+                    page.wait_for_selector('a[href^="defendant_detail"]', timeout=60000)
                     page.click('a[href^="defendant_detail"]')
                 except PlaywrightTimeoutError:
                     print("[ERROR] Defendant link not found.")
@@ -76,4 +76,5 @@ def root():
 @app.get("/search/{case_number}")
 def search(case_number: str):
     return lookup_case(case_number)
+
 
