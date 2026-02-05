@@ -4,25 +4,14 @@ import threading
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 app = FastAPI()
-lock = threading.Lock()
+lock = threading.Lock()  # Ensure only one browser instance runs at a time
 
-
-def lookup_case(case_number):
+def lookup_case(case_number: str):
     try:
-        with lock:
+        with lock:  # prevent concurrent Playwright sessions
             with sync_playwright() as p:
                 print("[INFO] Launching browser...")
-
-                browser = p.chromium.launch(
-                    headless=True,
-                    args=[
-                        "--no-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-gpu",
-                        "--single-process"
-                    ]
-                )
-
+                browser = p.chromium.launch(headless=True)  # headless=True for no GUI
                 page = browser.new_page()
 
                 print("[INFO] Opening Dallas County Jail Lookup page...")
@@ -31,7 +20,6 @@ def lookup_case(case_number):
                     wait_until="domcontentloaded",
                     timeout=90000
                 )
-
                 time.sleep(2)
                 page.mouse.wheel(0, 1500)
                 time.sleep(2)
@@ -48,13 +36,12 @@ def lookup_case(case_number):
                 time.sleep(3)
 
                 body_text = page.inner_text("body")
-
                 if "No records were found" in body_text:
                     print("[INFO] No records found for this case number.")
                     browser.close()
                     return {"found": False}
 
-                # Click defendant detail link
+                # Click the first defendant link
                 print("[INFO] Clicking defendant link...")
                 try:
                     page.wait_for_selector('a[href^="defendant_detail"]', timeout=60000)
@@ -69,24 +56,16 @@ def lookup_case(case_number):
                 time.sleep(3)
 
                 detail_text = page.inner_text("body")
-
                 print("[INFO] Scraping completed.")
                 browser.close()
 
-                return {
-                    "found": True,
-                    "detail_text": detail_text.strip()
-                }
+                return {"found": True, "detail_text": detail_text.strip()}
 
     except Exception as e:
         print("[ERROR] Exception occurred:")
         import traceback
         traceback.print_exc()
-
-        return {
-            "found": False,
-            "error": str(e)
-        }
+        return {"found": False, "error": str(e)}
 
 
 @app.get("/")
