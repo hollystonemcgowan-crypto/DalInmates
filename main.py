@@ -6,12 +6,23 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 app = FastAPI()
 lock = threading.Lock()
 
+
 def lookup_case(case_number):
     try:
         with lock:
             with sync_playwright() as p:
                 print("[INFO] Launching browser...")
-                browser = p.chromium.launch(headless=True)  # Requires X server / GUI
+
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                        "--single-process"
+                    ]
+                )
+
                 page = browser.new_page()
 
                 print("[INFO] Opening Dallas County Jail Lookup page...")
@@ -43,7 +54,7 @@ def lookup_case(case_number):
                     browser.close()
                     return {"found": False}
 
-                # Click the first defendant link that starts with "defendant_detail"
+                # Click defendant detail link
                 print("[INFO] Clicking defendant link...")
                 try:
                     page.wait_for_selector('a[href^="defendant_detail"]', timeout=60000)
@@ -58,23 +69,31 @@ def lookup_case(case_number):
                 time.sleep(3)
 
                 detail_text = page.inner_text("body")
-                print("[INFO] Scraping completed.")
 
+                print("[INFO] Scraping completed.")
                 browser.close()
-                return {"found": True, "detail_text": detail_text.strip()}
+
+                return {
+                    "found": True,
+                    "detail_text": detail_text.strip()
+                }
 
     except Exception as e:
         print("[ERROR] Exception occurred:")
         import traceback
         traceback.print_exc()
-        return {"found": False, "error": str(e)}
+
+        return {
+            "found": False,
+            "error": str(e)
+        }
+
 
 @app.get("/")
 def root():
     return {"status": "alive"}
 
+
 @app.get("/search/{case_number}")
 def search(case_number: str):
     return lookup_case(case_number)
-
-
